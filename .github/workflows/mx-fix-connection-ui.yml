@@ -1,0 +1,90 @@
+name: Corregir estados de conexión de visores
+
+on:
+  push:
+    paths:
+      - '.github/workflows/mx-fix-connection-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  corregir:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Actualizar indicadores
+        shell: bash
+        run: |
+          cat > /tmp/mx_fix.py <<'PYCODE'
+          from pathlib import Path
+          root=Path('MACROXEL-VISORES-CENTRAL')
+          common=['ANALISIS-SISTEM','COLECTIVOS-Y-PACIENTES','EXISTENCIAS','FARMACIA-AJUSCO-M','FARMACOVIGILANCIA','SURTIDO-COLEC','TRANSFERENCIAS']
+          old_conn="function connection(){try{const s=window.mxStableConnectionState?.();if(s&&typeof s.connected==='boolean')return s.connected}catch(_e){}if(navigator.onLine===false)return false;const html=document.documentElement.dataset.mxStableConnection;if(html==='online')return true;if(html==='offline')return false;return true}"
+          new_conn="function connectionStatus(){try{const s=window.mxStableConnectionState?.();if(s&&typeof s.level==='string'){const level=s.level==='green'?'green':s.level==='red'?'red':'orange',fb=s?.state?.firebase===true,pr=s?.state?.principalOnline===true,paused=s?.state?.paused===true;let label='● Verificando';if(level==='green')label='● 100% conectado';else if(level==='red')label='● Sin Firebase';else if(paused)label='● Firebase OK · Principal pausado';else if(fb&&!pr)label='● Firebase OK · Principal pendiente';else if(fb&&pr)label='● Sincronizando';return{level,label}}}catch(_e){}if(navigator.onLine===false)return{level:'red',label:'● Sin conexión'};const level=document.documentElement.dataset.mxConnectionLevel||'orange';return level==='green'?{level:'green',label:'● 100% conectado'}:level==='red'?{level:'red',label:'● Sin Firebase'}:{level:'orange',label:'● Verificando'}}"
+          for d in common:
+              p=root/d/'index.html'; s=p.read_text(encoding='utf-8')
+              assert s.count(old_conn)==1,(d,'connection')
+              s=s.replace(old_conn,new_conn)
+              a="const ov=ensureModal(),a=activationInfo(),online=connection(),u=principalUnit(),h=selectedHospital();"
+              b="const ov=ensureModal(),a=activationInfo(),conn=connectionStatus(),u=principalUnit(),h=selectedHospital(),connClass=conn.level==='green'?'mxp-ok':conn.level==='red'?'mxp-bad':'mxp-warn';"
+              assert s.count(a)==1,(d,'open-init'); s=s.replace(a,b)
+              a="<b class=\"${online?'mxp-ok':'mxp-bad'}\">${online?'● Conectado':'● Sin conexión'}</b>"
+              b="<b class=\"${connClass}\">${esc(conn.label)}</b>"
+              assert s.count(a)==1,(d,'open-label'); s=s.replace(a,b)
+              a="#mxActivationProfileV1030 .mxp-ok{color:#166534!important}#mxActivationProfileV1030 .mxp-bad{color:#991b1b!important}"
+              b="#mxActivationProfileV1030 .mxp-ok{color:#166534!important}#mxActivationProfileV1030 .mxp-warn{color:#9a3412!important}#mxActivationProfileV1030 .mxp-bad{color:#991b1b!important}"
+              assert s.count(a)==1,(d,'css'); s=s.replace(a,b)
+              p.write_text(s,encoding='utf-8')
+
+          p=root/'Recetas-surtido'/'index.html'; s=p.read_text(encoding='utf-8')
+          a="${window.mxStableConnectionState?.().level==='green'?'● 100% conectado':window.mxStableConnectionState?.().level==='orange'?'● Sincronizando':'● Sin Firebase'}"
+          b="${(()=>{const s=window.mxStableConnectionState?.()||{},fb=s?.state?.firebase===true,pr=s?.state?.principalOnline===true,paused=s?.state?.paused===true;return s.level==='green'?'● 100% conectado':s.level==='red'?'● Sin Firebase':paused?'● Firebase OK · Principal pausado':fb&&!pr?'● Firebase OK · Principal pendiente':fb&&pr?'● Sincronizando':'● Verificando'})()}"
+          assert s.count(a)==1,('Recetas-surtido','label'); p.write_text(s.replace(a,b),encoding='utf-8')
+
+          p=root/'ADMINISTRADOR'/'index.html'; s=p.read_text(encoding='utf-8')
+          start=s.find(' function sourceState(){'); end=s.find('\n function sync()',start)
+          assert start>=0 and end>start,'admin sourceState'
+          s=s[:start]+" function sourceState(){try{const s=window.mxStableConnectionState?.();if(s&&typeof s.level==='string')return s.level==='green'?'ok':s.level==='red'?'bad':'warn'}catch(_e){}const e=document.querySelector(SOURCE),raw=((e?.className||'')+' '+(e?.textContent||'')+' '+(e?.getAttribute?.('aria-label')||'')).toLowerCase();if(/bad|sin conex|desconect|offline|error/.test(raw))return'bad';if(/ok|conectado|en línea|online/.test(raw))return'ok';if(navigator.onLine===false)return'bad';return'warn'}"+s[end:]
+          old=" function sync(){const b=$('mxCompactStatusV1025');if(!b)return;const st=sourceState();b.classList.toggle('mx-ok',st==='ok');b.classList.toggle('mx-bad',st==='bad');if(st!=='ok')b.classList.add('mx-bad');const label=st==='ok'?'Conectado':'Sin conexión';b.title=label;b.setAttribute('aria-label',label)}"
+          new=" function sync(){const b=$('mxCompactStatusV1025');if(!b)return;const st=sourceState();b.classList.toggle('mx-ok',st==='ok');b.classList.toggle('mx-warn',st==='warn');b.classList.toggle('mx-bad',st==='bad');const label=st==='ok'?'100% conectado':st==='warn'?'Firebase OK · Principal pendiente':'Sin conexión';b.title=label;b.setAttribute('aria-label',label)}"
+          assert s.count(old)==1,'admin sync'; s=s.replace(old,new)
+          assert s.count("${st==='ok'?'mx-ok':st==='bad'?'mx-bad':''}")==1,'admin modal class'; s=s.replace("${st==='ok'?'mx-ok':st==='bad'?'mx-bad':''}","${st==='ok'?'mx-ok':st==='bad'?'mx-bad':'mx-warn'}",1)
+          assert s.count("${st==='ok'?'● Conectado':st==='bad'?'● Sin conexión':'● Comprobando'}")==1,'admin modal label'; s=s.replace("${st==='ok'?'● Conectado':st==='bad'?'● Sin conexión':'● Comprobando'}","${st==='ok'?'● 100% conectado':st==='bad'?'● Sin conexión':'● Firebase OK · Principal pendiente'}",1)
+          s=s.replace("#mxActivationLoginV1025 .mx-login-state.mx-ok{color:#166534}#mxActivationLoginV1025 .mx-login-state.mx-bad{color:#991b1b}","#mxActivationLoginV1025 .mx-login-state.mx-ok{color:#166534}#mxActivationLoginV1025 .mx-login-state.mx-warn{color:#9a3412}#mxActivationLoginV1025 .mx-login-state.mx-bad{color:#991b1b}")
+          s=s.replace("#mxCompactStatusV1025.mx-ok .mx-cdot{background:#22c55e!important;box-shadow:0 0 0 4px rgba(34,197,94,.18)!important}\n#mxCompactStatusV1025.mx-bad", "#mxCompactStatusV1025.mx-ok .mx-cdot{background:#22c55e!important;box-shadow:0 0 0 4px rgba(34,197,94,.18)!important}\n#mxCompactStatusV1025.mx-warn .mx-cdot{background:#f59e0b!important;box-shadow:0 0 0 4px rgba(245,158,11,.18)!important}\n#mxCompactStatusV1025.mx-bad")
+          s=s.replace("#mxCompactStatusV1025.mx-ok .mx-cdot{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.18)}#mxCompactStatusV1025.mx-bad", "#mxCompactStatusV1025.mx-ok .mx-cdot{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.18)}#mxCompactStatusV1025.mx-warn .mx-cdot{background:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.18)}#mxCompactStatusV1025.mx-bad")
+          p.write_text(s,encoding='utf-8')
+          print('OK: 9 visores actualizados')
+          PYCODE
+          python3 /tmp/mx_fix.py
+      - name: Validar cambios
+        shell: bash
+        run: |
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          root=Path('MACROXEL-VISORES-CENTRAL')
+          files=sorted(root.glob('*/index.html'))
+          assert len(files)==9, f'Se esperaban 9 visores y hay {len(files)}'
+          for p in files:
+              s=p.read_text(encoding='utf-8')
+              assert '<html' in s.lower(), p
+              assert 'mx-connectivity-master-v101' in s, p
+              assert 'Firebase OK · Principal pendiente' in s, p
+          print('Validación OK: 9 visores')
+          PYCODE
+      - name: Guardar en main
+        shell: bash
+        run: |
+          git config user.name 'janethzarate86-ux'
+          git config user.email 'janethzarate86-ux@users.noreply.github.com'
+          git add MACROXEL-VISORES-CENTRAL
+          if git diff --cached --quiet; then
+            echo 'Sin cambios'
+            exit 0
+          fi
+          git commit -m 'Corregir estado de conexión en los 9 visores'
+          git push origin HEAD:main
