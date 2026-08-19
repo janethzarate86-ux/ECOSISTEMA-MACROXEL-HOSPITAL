@@ -1,0 +1,40 @@
+name: Export Macroxel Hospital
+
+on:
+  push:
+    paths:
+      - '.github/workflows/export-macroxel-hospital.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Prepare package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p export/ECOSISTEMA-MACROXEL-HOSPITAL
+          cp -R MACROXEL-VISORES-CENTRAL export/ECOSISTEMA-MACROXEL-HOSPITAL/
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/TRANSFERENCIAS/index.html
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/EXISTENCIAS/index.html
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/COLECTIVOS-Y-PACIENTES/index.html
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/ADMINISTRADOR/index.html
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/FARMACOVIGILANCIA/index.html
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/SURTIDO-COLEC/index.html
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/ANALISIS-SISTEM/index.html
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/FARMACIA-AJUSCO-M/index.html
+          test -f export/ECOSISTEMA-MACROXEL-HOSPITAL/MACROXEL-VISORES-CENTRAL/Recetas-surtido/index.html
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ECOSISTEMA-MACROXEL-HOSPITAL-FINAL
+          path: export/ECOSISTEMA-MACROXEL-HOSPITAL
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 1
