@@ -1,0 +1,69 @@
+name: Macroxel Splash Fullscreen
+
+on:
+  push:
+    paths:
+      - '.github/workflows/macroxel-splash-fullscreen.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: macroxel-splash-fullscreen
+  cancel-in-progress: false
+
+jobs:
+  update-splash:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obtener repositorio
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sustituir splash por pantalla completa
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('MACROXEL-VISORES-CENTRAL')
+          files = sorted(root.glob('*/index.html'))
+          if len(files) != 9:
+              raise SystemExit(f'Se esperaban 9 visores y se encontraron {len(files)}')
+
+          old = '#mxStartupSplashV112 .mx-startup-art{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center center;pointer-events:none;user-select:none;-webkit-user-drag:none}'
+          new = '#mxStartupSplashV112 .mx-startup-art{position:absolute!important;inset:0!important;display:block!important;width:100vw!important;height:100vh!important;height:100dvh!important;min-width:100vw!important;min-height:100vh!important;min-height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;object-fit:cover!important;object-position:center center!important;pointer-events:none;user-select:none;-webkit-user-drag:none}'
+
+          for path in files:
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: regla original esperada 1 vez, encontrada {count}')
+              text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8', newline='')
+
+              start = text.find('<style id="mx-startup-splash-css-v112">')
+              end = text.find('</style>', start)
+              block = text[start:end]
+              if block.count('object-fit:cover') != 1 or 'object-fit:contain' in block:
+                  raise SystemExit(f'{path}: validación del splash falló')
+              if text.count('id="mx-startup-splash-css-v112"') != 1:
+                  raise SystemExit(f'{path}: bloque de splash duplicado')
+              print('OK', path)
+          PY
+
+      - name: Publicar cambio
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'Macroxel Hospital'
+          git config user.email 'macroxel-hospital@users.noreply.github.com'
+          git add MACROXEL-VISORES-CENTRAL/*/index.html
+          if git diff --cached --quiet; then
+            echo 'No hay cambios pendientes.'
+            exit 0
+          fi
+          git commit -m 'Macroxel Hospital: splash a pantalla completa'
+          git push
