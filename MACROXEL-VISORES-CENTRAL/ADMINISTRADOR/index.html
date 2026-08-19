@@ -1534,7 +1534,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 </script>
 <script id="mx-network-center-v124">
 (function(){'use strict';if(window.__mxNetworkCenterV124)return;window.__mxNetworkCenterV124=true;
-const CONTROL_DB='https://ecosistema-macroxel-default-rtdb.firebaseio.com',ONLINE_MS=90000,RECENT_MS=86400000;
+const CONTROL_DB='https://ecosistema-macroxel-default-rtdb.firebaseio.com',ONLINE_MS=90000,RECENT_MS=86400000,FIREBASE_PROBE_MS=4200;
 const clean=v=>String(v||'').trim().replace(/\.json\/?$/i,'').replace(/\/+$/,'');
 const txt=v=>String(v==null?'':v).trim(),now=()=>Date.now(),esc=v=>txt(v).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 function code(v){const n=txt(v).toUpperCase().replace(/^MACROXEL_/,'').replace(/[\s-]+/g,'_');if(n.includes('FARMACIA')&&n.includes('AJUSCO'))return'FARMACIA_AJUSCO_MEDIO';if(n.includes('SURTIDO')&&n.includes('COLECTIVO'))return'SURTIDO_COLECTIVOS';if(n.includes('TRANSFER'))return'TRANSFERENCIAS';if(n.includes('EXISTENCIA'))return'EXISTENCIAS';if(n.includes('FARMACOVIGILANCIA'))return'FARMACOVIGILANCIA';if(n.includes('COLECTIVO'))return'COLECTIVOS';if(n.includes('RECETA'))return'RECETAS';if(n.includes('ANALISIS')||n.includes('ANÁLISIS')||n.includes('CADUC'))return'ANALISIS_SISTEMA';if(n.includes('ADMINISTRADOR'))return'ADMINISTRADOR';if(n.includes('SISTEMA_PRINCIPAL')||n==='PRINCIPAL')return'SISTEMA_PRINCIPAL';return n}
@@ -1547,7 +1547,7 @@ function online(r){const t=Number(r?.lastSeenMs)||Date.parse(r?.lastSeenAt||0)||
 function recent(r){const t=Number(r?.lastSeenMs)||Date.parse(r?.lastSeenAt||0)||0;return!!t&&now()-t<RECENT_MS}
 function branchOf(r){return txt(r?.branch||r?.unitId||'SIN_UNIDAD').toUpperCase()||'SIN_UNIDAD'}
 function unitNameOf(r){return txt(r?.unitName||r?.principalName||r?.branch||'Sistema Principal')}
-let principals=[],viewers=[],controls={},meta={},audit=[],registry={},selectedBranch='';
+let principals=[],viewers=[],controls={},meta={},audit=[],registry={},firebaseHealth={},selectedBranch='';
 function ctl(d){return controls?.[d?.key]||{}}
 function paused(d){return ctl(d)?.paused===true||d?.connectionPaused===true}
 function principalRemotePaused(d){return ctl(d)?.paused===true}
@@ -1563,7 +1563,7 @@ function systems(){
   return [...map.values()].sort((a,b)=>String((primary(a)?.unitName||a.branch)).localeCompare(String((primary(b)?.unitName||b.branch)),'es'));
 }
 function primary(g){const live=[...(g?.principals||[])].sort((a,b)=>(Number(b.lastSeenMs)||Date.parse(b.lastSeenAt||0)||0)-(Number(a.lastSeenMs)||Date.parse(a.lastSeenAt||0)||0))[0];if(live)return live;return [...(g?.registry||[])].sort((a,b)=>(Date.parse(b.updatedAt||0)||0)-(Date.parse(a.updatedAt||0)||0))[0]||null}
-function linkAdminToGroup(g){const p=primary(g),db=clean(p?.firebaseUrl||p?.currentUrl||p?.db||p?.url);if(!db)return null;return window.mxAdminSetTarget?.({db,branch:g.branch,unitName:p?.unitName||p?.principalName||g.branch})||null}
+function linkAdminToGroup(g){const p=primary(g),db=systemFirebaseUrl(g);if(!db)return null;return window.mxAdminSetTarget?.({db,branch:g.branch,unitName:p?.unitName||p?.principalName||g.branch})||null}
 function viewerGroups(g){
   const map=new Map();
   for(const d of g?.viewers||[]){
@@ -1579,12 +1579,11 @@ function groupStatus(group){
   return'off'
 }
 function routeMapFor(g){return {}}
-function firebaseRoutesFor(g){
-  const p=primary(g),urls=[];
-  if(txt(p?.firebaseUrl))urls.push(txt(p.firebaseUrl));
-  if(Array.isArray(p?.firebaseUrls))for(const x of p.firebaseUrls)if(txt(x))urls.push(txt(x));
-  return [...new Set(urls.map(clean).filter(Boolean))]
-}
+function firebaseRoutesFor(g){const urls=[];for(const r of [...(g?.principals||[]),...(g?.registry||[])]){for(const k of ['firebaseUrl','currentUrl','db','url'])if(txt(r?.[k]))urls.push(txt(r[k]));if(Array.isArray(r?.firebaseUrls))for(const x of r.firebaseUrls)if(txt(x))urls.push(txt(x))}return [...new Set(urls.map(clean).filter(Boolean))]}
+function systemFirebaseUrl(g){return firebaseRoutesFor(g)[0]||''}
+function systemState(g){const ps=g?.principals||[],p=primary(g),pa=ps.length>0&&ps.every(principalRemotePaused),localOff=!pa&&p?.connectionPaused===true,h=firebaseHealth?.[g.branch];if(pa)return{code:'pause',connected:false,label:'Firebase desconectado desde Administrador'};if(localOff)return{code:'pause',connected:false,label:'Firebase desconectado localmente'};if(h?.ok===true)return{code:'on',connected:true,label:'Conectado a Firebase'};if(ps.some(online))return{code:'on',connected:true,label:'Conectado a Firebase · señal reciente'};if(h?.ok===false)return{code:'off',connected:false,label:'Sin conexión a Firebase'};return{code:'check',connected:false,label:'Verificando Firebase'}}
+async function probeFirebase(g){const db=systemFirebaseUrl(g);if(!db)return{ok:false,url:'',status:0,at:now()};const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),FIREBASE_PROBE_MS);try{const r=await fetch(db+'/viewer_users/'+encodeURIComponent(g.branch)+'/__mx_admin_probe__.json?mxadmin='+Date.now(),{cache:'no-store',signal:ctl.signal});return{ok:r.ok||r.status===401||r.status===403,url:db,status:r.status,at:now()}}catch(_e){return{ok:false,url:db,status:0,at:now()}}finally{clearTimeout(timer)}}
+async function refreshFirebaseHealth(groups){const pairs=await Promise.all((groups||[]).map(async g=>[g.branch,await probeFirebase(g)]));firebaseHealth=Object.fromEntries(pairs)}
 async function load(){
   const st=document.getElementById('mxNetStatus');if(st){st.textContent='Actualizando…';st.className='mx-net-state'}
   try{
@@ -1601,6 +1600,7 @@ async function load(){
     viewers=Object.entries(vp||{}).filter(([,v])=>v&&recent(v)).map(([key,v])=>({key,kind:'viewer',...v}));
     audit=Object.entries(au||{}).map(([k,v])=>({__key:k,...(v||{})})).sort((a,b)=>(Number(b.ts)||Date.parse(b.at||0)||0)-(Number(a.ts)||Date.parse(a.at||0)||0)).slice(0,60);
     const ss=systems();
+    await refreshFirebaseHealth(ss);
     if(selectedBranch&&!ss.some(x=>x.branch===selectedBranch)){selectedBranch='';window.mxAdminClearTarget?.()}
     if(selectedBranch){const current=ss.find(x=>x.branch===selectedBranch);if(current)linkAdminToGroup(current)}
     render();
@@ -1610,7 +1610,7 @@ async function load(){
 function render(){
   const host=document.getElementById('mxNetSystems');if(!host)return;
   const ss=systems();
-  host.innerHTML=ss.length?ss.map(g=>{const p=primary(g),on=(g.principals||[]).some(online),pa=(g.principals||[]).length>0&&(g.principals||[]).every(principalRemotePaused),vg=viewerGroups(g),active=g.branch===selectedBranch;return `<button type="button" class="mx-net-system-btn ${active?'active':''}" data-mx-system="${esc(g.branch)}"><b><span class="dot ${pa?'pause':on?'on':''}"></span>${esc(p?.unitName||p?.principalName||g.branch)}</b><small>ID: ${esc(g.branch)} · ${pa?'Firebase desconectado':on?'En línea':'Sin señal reciente'} · ${vg.length} visor(es)</small></button>`}).join(''):'<div class="mx-net-empty">No hay Sistemas Principales con señal reciente.</div>';
+  host.innerHTML=ss.length?ss.map(g=>{const p=primary(g),st=systemState(g),vg=viewerGroups(g),active=g.branch===selectedBranch;return `<button type="button" class="mx-net-system-btn ${active?'active':''}" data-mx-system="${esc(g.branch)}"><b><span class="dot ${st.code==='pause'?'pause':st.connected?'on':''}"></span>${esc(p?.unitName||p?.principalName||g.branch)}</b><small>ID: ${esc(g.branch)} · ${st.label} · ${vg.length} visor(es)</small></button>`}).join(''):'<div class="mx-net-empty">No hay Sistemas Principales con señal reciente.</div>';
   host.querySelectorAll('[data-mx-system]').forEach(b=>b.onclick=()=>{selectedBranch=b.dataset.mxSystem;const g=systems().find(x=>x.branch===selectedBranch);if(g)linkAdminToGroup(g);render();renderSystem()});
   renderSystem()
 }
@@ -1619,12 +1619,12 @@ function renderSystem(){
   const g=systems().find(x=>x.branch===selectedBranch);
   if(!g){panel.hidden=true;return}
   panel.hidden=false;
-  const p=primary(g),ps=g.principals||[],on=ps.some(online),pa=ps.length&&ps.every(principalRemotePaused),vgs=viewerGroups(g),allViewerMembers=g.viewers||[],allPaused=allViewerMembers.length&&allViewerMembers.every(paused);
+  const p=primary(g),ps=g.principals||[],st=systemState(g),on=st.connected,pa=st.code==='pause',vgs=viewerGroups(g),allViewerMembers=g.viewers||[],allPaused=allViewerMembers.length&&allViewerMembers.every(paused);
   document.getElementById('mxNetSystemTitle').textContent=p?.unitName||p?.principalName||g.branch;
-  const sysState=document.getElementById('mxNetSystemState');const localOff=!pa&&p?.connectionPaused===true;sysState.textContent=`${pa?'🔴 Firebase desconectado desde Administrador':localOff?'🔴 Firebase desconectado localmente':on?'🟢 Sistema en línea':'⚪ Sin señal reciente'} · ID ${g.branch}`;sysState.className='mx-net-state '+((pa||localOff)?'bad':on?'ok':'warn');
+  const sysState=document.getElementById('mxNetSystemState');sysState.textContent=`${on?'🟢':pa?'🔴':'⚪'} ${st.label} · ID ${g.branch}`;sysState.className='mx-net-state '+(pa?'bad':on?'ok':'warn');
   const linked=document.getElementById('mxNetAdminLink');if(linked)linked.textContent=`🔗 Administrador enlazado a ${p?.unitName||p?.principalName||g.branch}. Activaciones, permisos, usuarios y mensajes usarán esta conexión.`;
   const info=document.getElementById('mxNetPrincipalInfo');
-  info.innerHTML=`<b>Unidad</b><span>${esc(p?.unitName||p?.principalName||'—')}</span><b>ID sistema</b><span>${esc(g.branch)}</span><b>Estado</b><span>${pa?'🔴 Desconectado desde Administrador':localOff?'🔴 Desconectado localmente':on?'🟢 Conectado':'⚪ Sin señal'}</span><b>Versión</b><span>${esc(p?.controlVersion||p?.viewerVersion||'—')}</span><b>Última señal</b><span>${esc(fmt(p?.lastSeenAt||p?.lastSeenMs))}</span><b>Tipo</b><span>${esc(p?.deviceType||'Windows')}</span>`;
+  info.innerHTML=`<b>Unidad</b><span>${esc(p?.unitName||p?.principalName||'—')}</span><b>ID sistema</b><span>${esc(g.branch)}</span><b>Estado</b><span>${on?'🟢 Conectado a Firebase':pa?'🔴 '+st.label:'⚪ '+st.label}</span><b>Versión</b><span>${esc(p?.controlVersion||p?.viewerVersion||'—')}</span><b>Última señal</b><span>${esc(fmt(p?.lastSeenAt||p?.lastSeenMs))}</span><b>Tipo</b><span>${esc(p?.deviceType||'Windows')}</span>`;
   const fbs=firebaseRoutesFor(g);
   const routes=document.getElementById('mxNetRoutesInfo');
   const fbHtml=fbs.length?fbs.map((x,i)=>`<div class="mx-net-route"><b>Firebase ${i===0?'principal':'respaldo'}</b><small>${esc(x)}</small></div>`).join(''):`<div class="mx-net-route"><b>Firebase</b><small>${p?.routeHash?'Huella '+esc(p.routeHash):'No reportada'}</small></div>`;
@@ -1641,7 +1641,7 @@ function renderSystem(){
   const principalToggle=document.getElementById('mxNetTogglePrincipal');
   if(principalToggle){principalToggle.disabled=!ps.length;principalToggle.dataset.mode=pa?'connect':'disconnect';principalToggle.textContent=pa?'🔗 Conectar':'🔌 Desconectar';principalToggle.className=pa?'good':'danger';principalToggle.title=pa?'Reconectar el Sistema Principal a su URL de Firebase':'Desconectar el Sistema Principal de su URL de Firebase sin cerrar el sistema local'}
   const deleteBtn=document.getElementById('mxNetDeleteSystem');
-  if(deleteBtn){const principalLive=ps.some(online),viewerLive=(g.viewers||[]).some(online),canDelete=!principalLive&&!viewerLive;deleteBtn.disabled=!canDelete;deleteBtn.title=canDelete?'Eliminar este registro obsoleto del Centro de conectividad. No borra inventario ni datos de trabajo.':'Solo puede eliminarse cuando el Sistema Principal y sus visores estén sin conexión.'}
+  if(deleteBtn){const principalLive=on||ps.some(online),viewerLive=(g.viewers||[]).some(online),canDelete=!principalLive&&!viewerLive;deleteBtn.disabled=!canDelete;deleteBtn.title=canDelete?'Eliminar este registro obsoleto del Centro de conectividad. No borra inventario ni datos de trabajo.':'Solo puede eliminarse cuando el Sistema Principal y sus visores estén sin conexión.'}
   renderAudit(g)
 }
 function renderAudit(g){
