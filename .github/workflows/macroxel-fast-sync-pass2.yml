@@ -1,0 +1,110 @@
+name: Macroxel fast sync pass 2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/macroxel-fast-sync-pass2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Patch remaining visors
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile, os
+          ROOT=Path('MACROXEL-VISORES-CENTRAL')
+          def patch(rel,repls):
+              p=ROOT/rel;s=p.read_text(encoding='utf-8');orig=s
+              for old,new,count in repls:
+                  if new in s and old not in s: continue
+                  n=s.count(old)
+                  if n<count: raise RuntimeError(f'{rel}: {n}<{count}: {old[:120]!r}')
+                  s=s.replace(old,new)
+              p.write_text(s,encoding='utf-8');print(rel,'changed',s!=orig)
+
+          patch('FARMACIA-AJUSCO-M/index.html',[
+            ("async function put(path,data){const r=await fetch(url(path),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!r.ok)throw new Error('Firebase HTTP '+r.status);return true}","function mxFaSyncKey(path){const p=String(path||'');if(p.includes('/viewer_licenses/'))return'activations';if(p.includes('/service_orders/')||p.includes('/service_order_responses/')||p.includes('/service_folio_control/'))return'orders';return''}async function mxFaBump(path){const key=mxFaSyncKey(path);if(!key||String(path||'').includes('/sync_versions/'))return;try{const v=Math.max(Date.now(),Number(localStorage.getItem('mx_fa_sync_'+key)||0)+1);localStorage.setItem('mx_fa_sync_'+key,String(v));await fetch(url(`/sync_versions/${encodeURIComponent(branch())}/${key}`),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({v,updatedAt:new Date().toISOString(),source:'FARMACIA_AJUSCO_MEDIO'})})}catch(_e){}}async function put(path,data){const r=await fetch(url(path),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!r.ok)throw new Error('Firebase HTTP '+r.status);await mxFaBump(path);return true}",1),
+            ("function fmtDate(v){const d=parseDate(v);return d?d.toLocaleDateString('es-MX',{day:'2-digit',month:'2-digit',year:'numeric'}):txt(v)||'—'}","function fmtDate(v){const d=parseDate(v);return d?d.toLocaleDateString('es-MX',{timeZone:'America/Mexico_City',day:'2-digit',month:'2-digit',year:'numeric'}):txt(v)||'—'}function fmtDateTime(v){const d=new Date(v);return Number.isNaN(d.getTime())?txt(v)||'—':d.toLocaleString('es-MX',{timeZone:'America/Mexico_City',dateStyle:'short',timeStyle:'short',hour12:false})}",1),
+            ("deviceId:deviceId(),createdAt:iso,fechaSolicitud:now.toLocaleDateString('es-MX'),","deviceId:deviceId(),createdAt:iso,createdAtMs:now.getTime(),fechaSolicitud:now.toLocaleDateString('es-MX',{timeZone:'America/Mexico_City'}),horaSolicitud:now.toLocaleTimeString('es-MX',{timeZone:'America/Mexico_City',hour12:false}),",1),
+            ("pollTimer=setTimeout(pollHistory,10000)","pollTimer=setTimeout(pollHistory,2500)",1),
+            ("<tr><td>${esc(fmtDate(r.createdAt))}</td>","<tr><td>${esc(fmtDateTime(r.createdAt))}</td>",1),
+            ("date=fmtDate(final?r.finalizedAt:r.createdAt);","date=fmtDateTime(final?r.finalizedAt:r.createdAt);",1),
+          ])
+
+          patch('Recetas-surtido/index.html',[
+            ("function dbGet(path,opt={}){return fetchJson(cfg.db,path,{bust:opt.bust!==false,timeout:opt.timeout||9000})}function dbPut(path,data){return fetchJson(cfg.db,path,{method:'PUT',data,timeout:10000})}","function dbGet(path,opt={}){return fetchJson(cfg.db,path,{bust:opt.bust!==false,timeout:opt.timeout||9000})}function mxRecSyncKey(path){const p=String(path||'');if(p.includes('/viewer_licenses/'))return'activations';if(p.includes('/recipe_queue/')||p.includes('/recipe_orders/')||p.includes('/recipe_order_responses/'))return'recipes';return''}async function mxRecBump(path){const key=mxRecSyncKey(path);if(!key||String(path||'').includes('/sync_versions/'))return;try{const v=Math.max(Date.now(),Number(localStorage.getItem('mx_rec_sync_'+key)||0)+1);localStorage.setItem('mx_rec_sync_'+key,String(v));await fetchJson(cfg.db,'/sync_versions/'+encodeURIComponent(cfg.branch)+'/'+key,{method:'PUT',data:{v,updatedAt:nowIso(),source:'RECETAS'},timeout:5000})}catch(_e){}}async function dbPut(path,data){const out=await fetchJson(cfg.db,path,{method:'PUT',data,timeout:10000});await mxRecBump(path);return out}",1),
+          ])
+
+          patch('ANALISIS-SISTEM/index.html',[
+            ("if(method!=='GET')mxAnBumpActivation(db,path);return method==='DELETE'?null:r.json().catch(()=>null);","if(method!=='GET')await mxAnBumpActivation(db,path);return method==='DELETE'?null:r.json().catch(()=>null);",1),
+            ("new Date(data.updatedAt).toLocaleString('es-MX')","new Date(data.updatedAt).toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})",2),
+            ("new Date().toLocaleString('es-MX')","new Date().toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})",1),
+          ])
+
+          patch('ADMINISTRADOR/index.html',[
+            ("d.toLocaleString('es-MX')","d.toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})",2),
+            ("new Date(r.updatedAt).toLocaleString('es-MX')","new Date(r.updatedAt).toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})",1),
+          ])
+
+          patch('CENSO-HOSPITALARIO/index.html',[
+            ("new Date(r.deliveredAt||Date.now()).toLocaleString('es-MX')","new Date(r.deliveredAt||Date.now()).toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})",1),
+          ])
+
+          patch('EXISTENCIAS/index.html',[
+            ("function fmt(v){const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString('es-MX');}","function fmt(v){const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false});}",1),
+            ("new Date(updatedAt).toLocaleString('es-MX')","new Date(updatedAt).toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})",1),
+          ])
+
+          patch('TRANSFERENCIAS/index.html',[
+            ("new Date().toLocaleString('es-MX')","new Date().toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})",2),
+            ("function fmt(v){const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString('es-MX');}","function fmt(v){const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false});}",1),
+            ("function fmt(v){const d=new Date(v);return Number.isNaN(d.getTime())?txt(v):d.toLocaleString('es-MX');}","function fmt(v){const d=new Date(v);return Number.isNaN(d.getTime())?txt(v):d.toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false});}",1),
+            ("new Date(date).toLocaleString('es-MX')","new Date(date).toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})",1),
+          ])
+
+          # Inline JS syntax validation for every changed visor.
+          targets=[ROOT/x for x in ['FARMACIA-AJUSCO-M/index.html','Recetas-surtido/index.html','ANALISIS-SISTEM/index.html','ADMINISTRADOR/index.html','CENSO-HOSPITALARIO/index.html','EXISTENCIAS/index.html','TRANSFERENCIAS/index.html']]
+          pat=re.compile(r'<script\b([^>]*)>(.*?)</script>',re.I|re.S)
+          for p in targets:
+              text=p.read_text(encoding='utf-8')
+              for i,(attrs,code) in enumerate(pat.findall(text)):
+                  if re.search(r'\bsrc\s*=',attrs,re.I) or not code.strip(): continue
+                  mt=re.search(r'\btype\s*=\s*["\']([^"\']+)',attrs,re.I)
+                  if mt and mt.group(1).lower() not in ('text/javascript','application/javascript','module'): continue
+                  fd,tmp=tempfile.mkstemp(suffix='.js');os.close(fd);Path(tmp).write_text(code,encoding='utf-8')
+                  r=subprocess.run(['node','--check',tmp],capture_output=True,text=True);os.unlink(tmp)
+                  if r.returncode: raise RuntimeError(f'JS inválido {p} script {i}: {r.stderr[:700]}')
+          print('ALL PASS2 JS OK')
+          PY
+      - name: Verify critical markers
+        shell: bash
+        run: |
+          grep -q "mxFaBump" MACROXEL-VISORES-CENTRAL/FARMACIA-AJUSCO-M/index.html
+          grep -q "createdAtMs:now.getTime()" MACROXEL-VISORES-CENTRAL/FARMACIA-AJUSCO-M/index.html
+          grep -q "mxRecBump" MACROXEL-VISORES-CENTRAL/Recetas-surtido/index.html
+          grep -q "await mxAnBumpActivation" MACROXEL-VISORES-CENTRAL/ANALISIS-SISTEM/index.html
+          grep -q "America/Mexico_City" MACROXEL-VISORES-CENTRAL/ADMINISTRADOR/index.html
+          grep -q "America/Mexico_City" MACROXEL-VISORES-CENTRAL/CENSO-HOSPITALARIO/index.html
+          grep -q "America/Mexico_City" MACROXEL-VISORES-CENTRAL/EXISTENCIAS/index.html
+          grep -q "America/Mexico_City" MACROXEL-VISORES-CENTRAL/TRANSFERENCIAS/index.html
+      - name: Commit clean result
+        shell: bash
+        run: |
+          git config user.name "Macroxel Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git rm .github/workflows/macroxel-fast-sync-pass2.yml
+          git add MACROXEL-VISORES-CENTRAL
+          git commit -m "Completar modo rápido y hora hospital en visores"
+          git push origin HEAD:main
