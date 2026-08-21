@@ -1,0 +1,58 @@
+name: Fix colectivo edit preserving format
+
+on:
+  push:
+    paths:
+      - '.github/workflows/macroxel-fix-colectivo-vale.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Separar colectivos de Vale de salida
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile, os, sys
+          root=Path('MACROXEL-VISORES-CENTRAL')
+          col=root/'COLECTIVOS-Y-PACIENTES/index.html'
+          far=root/'FARMACIA-AJUSCO-M/index.html'
+          def rep(path,old,new,count=1):
+              s=path.read_text(encoding='utf-8'); n=s.count(old)
+              if n<count: raise RuntimeError(f'{path}: marcador {n}<{count}: {old[:120]!r}')
+              path.write_text(s.replace(old,new,count),encoding='utf-8')
+          rep(col,"function mxOrdinaryRevisionPayload({source,type,service,initials,doctor,license,doctorId,responsible,ordinaryBeds,ordinaryPatients,ordinaryOccupancy,items,now,revisionKind,deltaItems=[]}){const revision=Math.max(0,num(source?.revision))+1,approved=mxMedicalReviewApproved(source),hasDelta=deltaItems.length>0,infoId=hasDelta?`ACT-${Date.now()}-${Math.random().toString(36).slice(2,7)}`:txt(source?.actualizacionMedicaId);return{tipo:type,tipo_doc:'COLECTIVO ORDINARIO',servicio:service","function mxOrdinaryRevisionPayload({source,type,service,initials,doctor,license,doctorId,responsible,ordinaryBeds,ordinaryPatients,ordinaryOccupancy,items,now,revisionKind,deltaItems=[]}){const revision=Math.max(0,num(source?.revision))+1,approved=mxMedicalReviewApproved(source),hasDelta=deltaItems.length>0,infoId=hasDelta?`ACT-${Date.now()}-${Math.random().toString(36).slice(2,7)}`:txt(source?.actualizacionMedicaId);return{tipo:type,tipo_doc:'COLECTIVO ORDINARIO',tipoSalida:'',folioTipo:'CO',folioTipoLabel:'Colectivo ordinario',pedidoHospital:false,source:'VISOR_COLECTIVOS_Y_PACIENTES',sourceApp:'COLECTIVOS_Y_PACIENTES',hospitalSolicitanteId:'',hospitalSolicitanteNombre:'',hospitalSolicitanteIniciales:'',hospitalId:'',hospitalNombre:'',hospitalIniciales:'',jefeDepartamento:'',jefeDepartamentoNombre:'',rolSolicitante:'',servicio:service")
+          rep(col,"const id=makeId(),docRevision={id,folioSolicitud:folio,folio,orderRootId:rootId,parentOrderId:rootId,tipo:type,tipo_doc:'COLECTIVO ORDINARIO',documentDesiredItems:fullItems","const id=makeId(),docRevision={id,folioSolicitud:folio,folio,folioTipo:'CO',folioTipoLabel:'Colectivo ordinario',orderRootId:rootId,parentOrderId:rootId,tipo:type,tipo_doc:'COLECTIVO ORDINARIO',tipoSalida:'',pedidoHospital:false,source:'VISOR_COLECTIVOS_Y_PACIENTES',sourceApp:'COLECTIVOS_Y_PACIENTES',hospitalSolicitanteId:'',hospitalSolicitanteNombre:'',hospitalSolicitanteIniciales:'',hospitalId:'',hospitalNombre:'',hospitalIniciales:'',documentDesiredItems:fullItems")
+          rep(col,"folioConsecutivo:num(reference?.folioConsecutivo),folioTipo:txt(reference?.folioTipo||'CO'),folioReutilizadoColectivo:true","folioConsecutivo:num(reference?.folioConsecutivo),folioTipo:'CO',folioTipoLabel:'Colectivo ordinario',pedidoHospital:false,source:'VISOR_COLECTIVOS_Y_PACIENTES',sourceApp:'COLECTIVOS_Y_PACIENTES',hospitalSolicitanteId:'',hospitalSolicitanteNombre:'',hospitalSolicitanteIniciales:'',hospitalId:'',hospitalNombre:'',hospitalIniciales:'',folioReutilizadoColectivo:true")
+          rep(col,"const r={id,folioSolicitud:folio,folio,folioConsecutivo:reserved.consecutivo,folioTipo:reserved.tipo,folioReutilizadoPaciente:!!reserved.reused","const r={id,folioSolicitud:folio,folio,folioConsecutivo:reserved.consecutivo,folioTipo:reserved.tipo,folioTipoLabel:justified?'Colectivo justificado':'Colectivo ordinario',pedidoHospital:false,source:'VISOR_COLECTIVOS_Y_PACIENTES',sourceApp:'COLECTIVOS_Y_PACIENTES',hospitalSolicitanteId:'',hospitalSolicitanteNombre:'',hospitalSolicitanteIniciales:'',hospitalId:'',hospitalNombre:'',hospitalIniciales:'',folioReutilizadoPaciente:!!reserved.reused")
+          rep(far,"tipo:'Vale de salida',tipo_doc:'VALE DE SALIDA',tipoSalida:'Vale de salida',pedidoHospital:true,servicio:hospital.iniciales","tipo:'Vale de salida',tipo_doc:'VALE DE SALIDA',tipoSalida:'Vale de salida',pedidoHospital:true,source:'VISOR_FARMACIA_AJUSCO_MEDIO',sourceApp:'FARMACIA_AJUSCO_MEDIO',servicio:hospital.iniciales")
+          # Syntax-check every inline JS block in both modified visors.
+          pat=re.compile(r'<script\b([^>]*)>(.*?)</script>',re.I|re.S)
+          tp=re.compile(r"\btype\s*=\s*[\"']([^\"']+)",re.I)
+          for p in (col,far):
+              text=p.read_text(encoding='utf-8')
+              for i,(attrs,code) in enumerate(pat.findall(text)):
+                  if re.search(r'\bsrc\s*=',attrs,re.I) or not code.strip(): continue
+                  mt=tp.search(attrs)
+                  if mt and mt.group(1).lower() not in ('text/javascript','application/javascript','module'): continue
+                  fd,tmp=tempfile.mkstemp(suffix='.js'); os.close(fd); Path(tmp).write_text(code,encoding='utf-8')
+                  r=subprocess.run(['node','--check',tmp],capture_output=True,text=True); os.unlink(tmp)
+                  if r.returncode: raise RuntimeError(f'{p} script {i}: {r.stderr}')
+          print('Colectivos preserva formato CO; Vale queda marcado solo por Farmacia Ajusco Medio.')
+          PY
+      - name: Commit correction
+        shell: bash
+        run: |
+          git config user.name 'Macroxel Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/macroxel-fix-colectivo-vale.yml
+          git add MACROXEL-VISORES-CENTRAL/COLECTIVOS-Y-PACIENTES/index.html MACROXEL-VISORES-CENTRAL/FARMACIA-AJUSCO-M/index.html
+          git commit -m 'Corregir edición de colectivos sin convertir a Vale de salida'
+          git push
