@@ -496,7 +496,7 @@ function rest(db,path,bust=false){const p=String(path||'').startsWith('/')?Strin
 
 async function mxAnBumpActivation(db,path){if(!String(path||'').includes('/viewer_licenses/'))return;try{const v=Math.max(Date.now(),Number(localStorage.getItem('mx_an_act_ver')||0)+1);localStorage.setItem('mx_an_act_ver',String(v));await fetch(rest(db,`/sync_versions/${encodeURIComponent(config.branch)}/activations`,false),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({v,updatedAt:new Date().toISOString()})})}catch(_e){}}
 
-async function request(db,path,method='GET',body){const controller=typeof AbortController==='function'?new AbortController():null,timer=setTimeout(()=>controller?.abort(),8000);try{const r=await fetch(rest(db,path,method==='GET'),{method,cache:'no-store',signal:controller?.signal,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error('Firebase HTTP '+r.status);if(method!=='GET')mxAnBumpActivation(db,path);return method==='DELETE'?null:r.json().catch(()=>null);}finally{clearTimeout(timer)}}
+async function request(db,path,method='GET',body){const controller=typeof AbortController==='function'?new AbortController():null,timer=setTimeout(()=>controller?.abort(),8000);try{const r=await fetch(rest(db,path,method==='GET'),{method,cache:'no-store',signal:controller?.signal,headers:body?{'Content-Type':'application/json'}:undefined,body:body?JSON.stringify(body):undefined});if(!r.ok)throw new Error('Firebase HTTP '+r.status);if(method!=='GET')await mxAnBumpActivation(db,path);return method==='DELETE'?null:r.json().catch(()=>null);}finally{clearTimeout(timer)}}
 function hash(v){let h=2166136261;for(const ch of String(v)){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return(h>>>0).toString(16).padStart(8,'0').toUpperCase();}
 function deviceId(){return window.mxUnifiedActivation.deviceId()}
 function deviceKey(){return deviceId().replace(/[.#$\[\]\/]/g,'_')}function licensePath(){return'/viewer_licenses/'+encodeURIComponent(config.branch)+'/'+encodeURIComponent(deviceKey())}
@@ -671,7 +671,7 @@ function renderGraphs(){
     const st=supplyStats(),vals=[{clave:'CON ABASTO',descripcion:`${st.withStock} claves`,v:st.withStock,good:true},{clave:'SIN ABASTO',descripcion:`${st.withoutStock} claves`,v:st.withoutStock,good:false}];subtitle='Porcentaje de claves únicas con existencia en el corte actual';chart=graphBarRows(vals,x=>x.v,x=>`${x.v} · ${st.total?(x.v/st.total*100).toFixed(1):'0.0'}%`,{limit:2,classFn:x=>x.good?'good':'bad',labelFn:x=>`${x.clave} · ${x.descripcion}`});
   }
   $('statusText').innerHTML=`Gráfico <b>${esc(title)}</b> · ${rows.length} registro(s) considerados`;
-  $('updatedText').textContent=(data.updatedAt?'Actualizado '+new Date(data.updatedAt).toLocaleString('es-MX')+' · ':'')+(data.source||'');
+  $('updatedText').textContent=(data.updatedAt?'Actualizado '+new Date(data.updatedAt).toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})+' · ':'')+(data.source||'');
   $('results').innerHTML=`<div class="mx-graph-shell"><div class="mx-graph-tabs">${graphButtons()}</div><section class="mx-graph-card"><div class="mx-graph-head"><div><h3>${esc(title)}</h3><p>${esc(subtitle)}</p></div><span class="pill">${esc(period)}</span></div>${chart}<div class="mx-graph-foot">Las gráficas respetan el buscador y el filtro de la fila superior. Los cálculos de consumo y rotación usan el mes móvil publicado por el Sistema Principal.</div></section></div>`;
 }
 function render(){
@@ -681,7 +681,7 @@ function render(){
   else if(mode==='supply'){const st=supplyStats();$('statusText').innerHTML=`Abasto <b>${st.pct.toFixed(1)}%</b> · <b>${st.withStock}</b> de <b>${st.total}</b> claves únicas con existencia · <b>${st.withoutStock}</b> sin abasto${rows.length>limit?` · mostrando ${limit}`:''}`;}
   else if(mode==='expiry')$('statusText').innerHTML=`<b>${rows.length}</b> lote(s) con caducidad en el rango${rows.length>limit?` · mostrando ${limit}`:''}`;
   else $('statusText').innerHTML=`<b>${rows.length}</b> clave(s) única(s) · ${esc(analysisPeriodText())}${rows.length>limit?` · mostrando ${limit}`:''}`;
-  $('updatedText').textContent=(data.updatedAt?'Actualizado '+new Date(data.updatedAt).toLocaleString('es-MX')+' · ':'')+(data.source||'');$('results').innerHTML=show.length?show.map(card).join(''):'<div class="empty">No hay productos para este filtro. Verifica el rango o sincroniza el sistema principal.</div>';
+  $('updatedText').textContent=(data.updatedAt?'Actualizado '+new Date(data.updatedAt).toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false})+' · ':'')+(data.source||'');$('results').innerHTML=show.length?show.map(card).join(''):'<div class="empty">No hay productos para este filtro. Verifica el rango o sincroniza el sistema principal.</div>';
 }
 function lotDetails(x){
   const all=(x.lots||[]),lots=x.existencia>0?all.filter(l=>n(l.existencia)>0):all;if(!lots.length)return'';
@@ -725,7 +725,7 @@ function createPdf(title,headers,rows,filter){
     let y=H-34;
     let c='BT /F2 17 Tf 0.04 0.17 0.33 rg '+margin+' '+y+' Td '+pstr('MACROXEL · '+title)+' Tj ET\n';
     y-=18;
-    c+='BT /F1 8 Tf 0.25 0.35 0.45 rg '+margin+' '+y+' Td '+pstr('Periodo/filtro: '+filter+' · Generado: '+new Date().toLocaleString('es-MX'))+' Tj ET\n';
+    c+='BT /F1 8 Tf 0.25 0.35 0.45 rg '+margin+' '+y+' Td '+pstr('Periodo/filtro: '+filter+' · Generado: '+new Date().toLocaleString('es-MX',{timeZone:'America/Mexico_City',hour12:false}))+' Tj ET\n';
     y-=17;c+='0.04 0.17 0.33 RG 0.6 w '+margin+' '+y+' m '+(W-margin)+' '+y+' l S\n';
     y-=15;const widths=headers.map(h=>h.w),xs=[];let x=margin;for(const w of widths){xs.push(x);x+=w}
     headers.forEach((h,j)=>{c+='BT /F2 7 Tf 0.04 0.17 0.33 rg '+xs[j]+' '+y+' Td '+pstr(h.t)+' Tj ET\n'});
