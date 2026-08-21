@@ -1,0 +1,27 @@
+name: MX patch Colectivos Pacientes v1.0.40
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Aplicar actualizacion
+        shell: bash
+        run: |
+          cat .mxpatch/cp140.part1 .mxpatch/cp140.part2 .mxpatch/cp140.part3 .mxpatch/cp140.part4 .mxpatch/cp140.part5 | base64 -d | gzip -d > /tmp/mx.patch
+          git apply --check /tmp/mx.patch
+          git apply /tmp/mx.patch
+          rm -rf .mxpatch
+          rm -f .github/workflows/mx-patch-colectivos-v140.yml
+          git config user.name "Macroxel Update"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Actualizar Colectivos y Pacientes: servicio y medico persistentes"
+          git push origin HEAD:main
