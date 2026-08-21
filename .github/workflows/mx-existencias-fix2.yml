@@ -1,0 +1,72 @@
+name: Aplicar ajuste Existencias
+on: push
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p=Path('MACROXEL-VISORES-CENTRAL/EXISTENCIAS/index.html')
+          s=p.read_text(encoding='utf-8')
+          def r(a,b):
+              global s
+              n=s.count(a)
+              if n!=1: raise SystemExit(f'Marcador inesperado: {n} :: {a[:80]}')
+              s=s.replace(a,b,1)
+          r("async function submitRequest(){const btn=$('mxVaSubmit');try{saveCfg({db:$('mxVaDb').value,branch:$('mxVaBranch').value},false);","async function mxPrepareActivationBinding(){let b=null;try{b=await window.mxFixedPrincipalBinding?.resolveForActivation?.()}catch(_e){}const c=cfg(),db=txt(b?.db||c.db),branch=txt(b?.branch||c.branch).toUpperCase();if(db){try{window.mxApproveOperationalDb?.(db,branch)}catch(_e){}saveCfg({db,branch},false);return{db,branch}}throw new Error('Esperando conexión con el Sistema Principal asociado.')}\n  async function submitRequest(){const btn=$('mxVaSubmit');try{await mxPrepareActivationBinding();saveCfg({db:$('mxVaDb').value,branch:$('mxVaBranch').value},false);")
+          r("async function validate(manual=false){const gate=ensureGate(),btn=$('mxVaValidate');try{btn.disabled=true;if(navigator.onLine===false){if(useCachedLicense('Sin conexión a Internet'))return true;throw new Error('No hay conexión y este dispositivo no tiene una licencia local activa y vigente.');}setState('Validando activación en Firebase...');","async function validate(manual=false){const gate=ensureGate(),btn=$('mxVaValidate');try{btn.disabled=true;if(navigator.onLine===false){if(useCachedLicense('Sin conexión a Internet'))return true;throw new Error('No hay conexión y este dispositivo no tiene una licencia local activa y vigente.');}await mxPrepareActivationBinding();setState('Validando activación en Firebase...');")
+          r("if(next.length||!orders.length)orders=next;render();notifyMedicalPending();return true","if(next.length||!orders.length)orders=next;window.__mxExistenciasOrdersForDemand=orders.slice();try{window.dispatchEvent(new CustomEvent('mx-existencias-demand-updated'))}catch(_e){}render();notifyMedicalPending();return true")
+          r("if(next.length||!orders.length)orders=next;render();notifyMedicalPending();const pending=orders.filter","if(next.length||!orders.length)orders=next;window.__mxExistenciasOrdersForDemand=orders.slice();try{window.dispatchEvent(new CustomEvent('mx-existencias-demand-updated'))}catch(_e){}render();notifyMedicalPending();const pending=orders.filter")
+          old="""  function renderInventory(){
+    const q=norm($('inventoryQ')?.value||'');
+    inventoryFiltered=inventoryItems.filter(r=>num(r.existencia)>0&&(!q||norm(r.clave).includes(q)||norm(r.descripcion).includes(q)));
+    const rows=inventoryFiltered.slice(0,700);
+"""
+          new="""  function mxInventoryDemandScores(){
+    const source=Array.isArray(window.__mxExistenciasOrdersForDemand)?window.__mxExistenciasOrdersForDemand:[],latest=new Map(),score=new Map();
+    const stamp=o=>Math.max(num(o?.updatedAtMs),num(o?.createdAtMs),Date.parse(o?.updatedAt||o?.createdAt||0)||0,num(o?.revision));
+    for(const o of source){if(!o||typeof o!=='object')continue;const root=String(o.orderRootId||o.parentOrderId||o.folioSolicitud||o.folio||o.id||'').trim();if(!root)continue;const prev=latest.get(root);if(!prev||stamp(o)>=stamp(prev))latest.set(root,o)}
+    for(const o of latest.values()){const items=Array.isArray(o.documentDesiredItems)&&o.documentDesiredItems.length?o.documentDesiredItems:Array.isArray(o.items)?o.items:Array.isArray(o.approvedItems)?o.approvedItems:[];const seen=new Set();for(const it of items){const key=norm(it?.clave||it?.cpm||it?.codigo||'');if(!key)continue;const qty=Math.max(0,num(it?.cantidadSolicitadaAhora??it?.cantidadSolicitudActual??it?.cantidadPorRecibir??it?.cantidadRecibidaSolicitada??it?.cantidad24Horas??it?.cantidadSolicitada??it?.pzs??it?.cantidad));const rec=score.get(key)||{qty:0,requests:0};rec.qty+=qty;if(!seen.has(key)){rec.requests+=1;seen.add(key)}score.set(key,rec)}}
+    return score;
+  }
+  function mxInventoryTopRequested(rows,limit=20){const scores=mxInventoryDemandScores();return rows.slice().sort((a,b)=>{const A=scores.get(norm(a.clave))||{qty:0,requests:0},B=scores.get(norm(b.clave))||{qty:0,requests:0};return(B.qty-A.qty)||(B.requests-A.requests)||(num(b.existencia)-num(a.existencia))||String(a.descripcion||'').localeCompare(String(b.descripcion||''),'es')}).slice(0,limit)}
+  function renderInventory(){
+    const q=norm($('inventoryQ')?.value||''),available=inventoryItems.filter(r=>num(r.existencia)>0);
+    if(q){inventoryFiltered=available.filter(r=>norm(r.clave).includes(q)||norm(r.descripcion).includes(q));}
+    else{inventoryFiltered=mxInventoryTopRequested(available,20);}
+    const rows=inventoryFiltered;
+"""
+          r(old,new)
+          r("$('btnInventoryReload').onclick=()=>loadInventoryData(true);$('inventoryQ').addEventListener('input',renderInventory);","$('btnInventoryReload').onclick=()=>loadInventoryData(true);$('inventoryQ').addEventListener('input',renderInventory);window.addEventListener('mx-existencias-demand-updated',()=>{if(inventoryLoaded&&!norm($('inventoryQ')?.value||''))renderInventory()});")
+          p.write_text(s,encoding='utf-8')
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess,tempfile,os
+          s=Path('MACROXEL-VISORES-CENTRAL/EXISTENCIAS/index.html').read_text(encoding='utf-8')
+          pat=re.compile(r'<script\b([^>]*)>(.*?)</script>',re.I|re.S)
+          n=0
+          for attrs,code in pat.findall(s):
+              if 'src=' in attrs.lower() or not code.strip(): continue
+              fd,f=tempfile.mkstemp(suffix='.js');os.close(fd);Path(f).write_text(code,encoding='utf-8')
+              q=subprocess.run(['node','--check',f],capture_output=True,text=True);os.unlink(f)
+              if q.returncode: raise SystemExit(q.stderr)
+              n+=1
+          print('JS OK',n)
+          PY
+      - name: Guardar
+        run: |
+          git config user.name 'Macroxel Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          rm -f .github/workflows/macroxel-fix-existencias-binding-top20.yml
+          git rm .github/workflows/mx-existencias-fix2.yml
+          git add -A
+          git commit -m 'Corregir Existencias: activación y top 20 solicitados'
+          git push
