@@ -1,0 +1,54 @@
+name: Finalize colectivo format guard
+
+on:
+  push:
+    paths:
+      - '.github/workflows/macroxel-fix-colectivo-vale-pass2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Correct both colectivo constructors
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess,tempfile,os
+          p=Path('MACROXEL-VISORES-CENTRAL/COLECTIVOS-Y-PACIENTES/index.html')
+          s=p.read_text(encoding='utf-8')
+          bad="folioTipoLabel:justified?'Colectivo justificado':'Colectivo ordinario',pedidoHospital:false,source:'VISOR_COLECTIVOS_Y_PACIENTES',sourceApp:'COLECTIVOS_Y_PACIENTES',hospitalSolicitanteId:'',hospitalSolicitanteNombre:'',hospitalSolicitanteIniciales:'',hospitalId:'',hospitalNombre:'',hospitalIniciales:'',folioReutilizadoPaciente:!!reserved.reused,folioPacienteAsignado:assignedFolio||folio,status:'pending',estado:'PENDIENTE',tipo:'Colectivo justificado'"
+          good="folioTipoLabel:'Colectivo justificado',pedidoHospital:false,source:'VISOR_COLECTIVOS_Y_PACIENTES',sourceApp:'COLECTIVOS_Y_PACIENTES',hospitalSolicitanteId:'',hospitalSolicitanteNombre:'',hospitalSolicitanteIniciales:'',hospitalId:'',hospitalNombre:'',hospitalIniciales:'',folioReutilizadoPaciente:!!reserved.reused,folioPacienteAsignado:assignedFolio||folio,status:'pending',estado:'PENDIENTE',tipo:'Colectivo justificado'"
+          if s.count(bad)!=1: raise RuntimeError(f'Precarga marker count {s.count(bad)}')
+          s=s.replace(bad,good,1)
+          old="const r={id,folioSolicitud:folio,folio,folioConsecutivo:reserved.consecutivo,folioTipo:reserved.tipo,folioReutilizadoPaciente:!!reserved.reused,folioPacienteAsignado:justified?(assignedFolio||folio):''"
+          new="const r={id,folioSolicitud:folio,folio,folioConsecutivo:reserved.consecutivo,folioTipo:reserved.tipo,folioTipoLabel:justified?'Colectivo justificado':'Colectivo ordinario',pedidoHospital:false,source:'VISOR_COLECTIVOS_Y_PACIENTES',sourceApp:'COLECTIVOS_Y_PACIENTES',hospitalSolicitanteId:'',hospitalSolicitanteNombre:'',hospitalSolicitanteIniciales:'',hospitalId:'',hospitalNombre:'',hospitalIniciales:'',folioReutilizadoPaciente:!!reserved.reused,folioPacienteAsignado:justified?(assignedFolio||folio):''"
+          if s.count(old)!=1: raise RuntimeError(f'sendOrder marker count {s.count(old)}')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          pat=re.compile(r'<script\b([^>]*)>(.*?)</script>',re.I|re.S);tp=re.compile(r"\btype\s*=\s*[\"']([^\"']+)",re.I)
+          for i,(attrs,code) in enumerate(pat.findall(s)):
+              if re.search(r'\bsrc\s*=',attrs,re.I) or not code.strip(): continue
+              mt=tp.search(attrs)
+              if mt and mt.group(1).lower() not in ('text/javascript','application/javascript','module'): continue
+              fd,tmp=tempfile.mkstemp(suffix='.js');os.close(fd);Path(tmp).write_text(code,encoding='utf-8')
+              r=subprocess.run(['node','--check',tmp],capture_output=True,text=True);os.unlink(tmp)
+              if r.returncode: raise RuntimeError(f'inline script {i}: {r.stderr}')
+          if "folioTipo:txt(reference?.folioTipo||'CO')" in s: raise RuntimeError('stale folioTipo inheritance remains')
+          print('Both constructors validated')
+          PY
+      - name: Commit final correction
+        shell: bash
+        run: |
+          git config user.name 'Macroxel Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/macroxel-fix-colectivo-vale-pass2.yml
+          git add MACROXEL-VISORES-CENTRAL/COLECTIVOS-Y-PACIENTES/index.html
+          git commit -m 'Completar protección de formato en colectivos y precarga'
+          git push
