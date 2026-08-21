@@ -1,0 +1,47 @@
+name: Keep Vale detection strict in Surtido
+
+on:
+  push:
+    paths:
+      - '.github/workflows/macroxel-fix-vale-surtido.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch strict Vale detection
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess,tempfile,os
+          p=Path('MACROXEL-VISORES-CENTRAL/SURTIDO-COLEC/index.html')
+          s=p.read_text(encoding='utf-8')
+          old="function isHospitalOrder(o={}){const t=norm(o?.tipo||o?.tipo_doc||o?.tipoSalida||o?.folioTipo||o?.folioTipoLabel);return o?.pedidoHospital===true||t.includes('VALE DE SALIDA')||t.includes('VALE_DE_SALIDA')||t.includes('PEDIDO DE HOSPITAL')||t.includes('PEDIDO_HOSPITAL')||Boolean(txt(o?.hospitalSolicitanteNombre||o?.hospitalNombre||o?.hospitalSolicitanteId||o?.hospitalSolicitanteIniciales||o?.hospitalIniciales))}"
+          new="function isHospitalOrder(o={}){const t=norm([o?.tipo,o?.tipo_doc,o?.tipoSalida,o?.folioTipo,o?.folioTipoLabel].filter(Boolean).join(' ')),src=norm([o?.source,o?.sourceApp,o?.origen,o?.appCode,o?.requestSource].filter(Boolean).join(' ')),vale=t.includes('VALE DE SALIDA')||t.includes('VALE_DE_SALIDA')||t.includes('PEDIDO DE HOSPITAL')||t.includes('PEDIDO_HOSPITAL'),farmaciaAjusco=src.includes('FARMACIA_AJUSCO_MEDIO')||src.includes('VISOR_FARMACIA_AJUSCO');return Boolean((o?.pedidoHospital===true&&vale)||(farmaciaAjusco&&(vale||o?.pedidoHospital===true)))}"
+          if s.count(old)!=1: raise RuntimeError(f'marker count {s.count(old)}')
+          s=s.replace(old,new,1);p.write_text(s,encoding='utf-8')
+          pat=re.compile(r'<script\b([^>]*)>(.*?)</script>',re.I|re.S);tp=re.compile(r"\btype\s*=\s*[\"']([^\"']+)",re.I)
+          for i,(attrs,code) in enumerate(pat.findall(s)):
+              if re.search(r'\bsrc\s*=',attrs,re.I) or not code.strip(): continue
+              mt=tp.search(attrs)
+              if mt and mt.group(1).lower() not in ('text/javascript','application/javascript','module'): continue
+              fd,tmp=tempfile.mkstemp(suffix='.js');os.close(fd);Path(tmp).write_text(code,encoding='utf-8')
+              r=subprocess.run(['node','--check',tmp],capture_output=True,text=True);os.unlink(tmp)
+              if r.returncode: raise RuntimeError(r.stderr)
+          PY
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name 'Macroxel Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/macroxel-fix-vale-surtido.yml
+          git add MACROXEL-VISORES-CENTRAL/SURTIDO-COLEC/index.html
+          git commit -m 'Restringir Vale de salida a pedidos de Farmacia Ajusco Medio'
+          git push
