@@ -1,0 +1,85 @@
+name: Fix Existencias binding and top20
+
+on:
+  push:
+    paths:
+      - '.github/workflows/macroxel-fix-existencias-binding-top20.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Corregir Existencias
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re,subprocess,tempfile,os
+          p=Path('MACROXEL-VISORES-CENTRAL/EXISTENCIAS/index.html')
+          s=p.read_text(encoding='utf-8')
+          def rep(old,new,count=1):
+              global s
+              n=s.count(old)
+              if n!=count: raise RuntimeError(f'marker count {n}!={count}: {old[:130]!r}')
+              s=s.replace(old,new,count)
+          rep("async function submitRequest(){const btn=$('mxVaSubmit');try{saveCfg({db:$('mxVaDb').value,branch:$('mxVaBranch').value},false);","async function mxPrepareActivationBinding(){let b=null;try{b=await window.mxFixedPrincipalBinding?.resolveForActivation?.()}catch(_e){}const c=cfg(),db=txt(b?.db||c.db),branch=txt(b?.branch||c.branch).toUpperCase();if(db){try{window.mxApproveOperationalDb?.(db,branch)}catch(_e){}saveCfg({db,branch},false);return{db,branch}}throw new Error('Esperando conexión con el Sistema Principal asociado.')}\n  async function submitRequest(){const btn=$('mxVaSubmit');try{await mxPrepareActivationBinding();saveCfg({db:$('mxVaDb').value,branch:$('mxVaBranch').value},false);")
+          rep("async function validate(manual=false){const gate=ensureGate(),btn=$('mxVaValidate');try{btn.disabled=true;if(navigator.onLine===false){if(useCachedLicense('Sin conexión a Internet'))return true;throw new Error('No hay conexión y este dispositivo no tiene una licencia local activa y vigente.');}setState('Validando activación en Firebase...');","async function validate(manual=false){const gate=ensureGate(),btn=$('mxVaValidate');try{btn.disabled=true;if(navigator.onLine===false){if(useCachedLicense('Sin conexión a Internet'))return true;throw new Error('No hay conexión y este dispositivo no tiene una licencia local activa y vigente.');}await mxPrepareActivationBinding();setState('Validando activación en Firebase...');")
+          rep("if(next.length||!orders.length)orders=next;render();notifyMedicalPending();return true","if(next.length||!orders.length)orders=next;window.__mxExistenciasOrdersForDemand=orders.slice();try{window.dispatchEvent(new CustomEvent('mx-existencias-demand-updated'))}catch(_e){}render();notifyMedicalPending();return true")
+          rep("if(next.length||!orders.length)orders=next;render();notifyMedicalPending();const pending=orders.filter","if(next.length||!orders.length)orders=next;window.__mxExistenciasOrdersForDemand=orders.slice();try{window.dispatchEvent(new CustomEvent('mx-existencias-demand-updated'))}catch(_e){}render();notifyMedicalPending();const pending=orders.filter")
+          old="""  function renderInventory(){
+    const q=norm($('inventoryQ')?.value||'');
+    inventoryFiltered=inventoryItems.filter(r=>num(r.existencia)>0&&(!q||norm(r.clave).includes(q)||norm(r.descripcion).includes(q)));
+    const rows=inventoryFiltered.slice(0,700);
+"""
+          new="""  function mxInventoryDemandScores(){
+    const source=Array.isArray(window.__mxExistenciasOrdersForDemand)?window.__mxExistenciasOrdersForDemand:[],latest=new Map(),score=new Map();
+    const stamp=o=>Math.max(num(o?.updatedAtMs),num(o?.createdAtMs),Date.parse(o?.updatedAt||o?.createdAt||0)||0,num(o?.revision));
+    for(const o of source){if(!o||typeof o!=='object')continue;const root=String(o.orderRootId||o.parentOrderId||o.folioSolicitud||o.folio||o.id||'').trim();if(!root)continue;const prev=latest.get(root);if(!prev||stamp(o)>=stamp(prev))latest.set(root,o)}
+    for(const o of latest.values()){
+      const items=Array.isArray(o.documentDesiredItems)&&o.documentDesiredItems.length?o.documentDesiredItems:Array.isArray(o.items)?o.items:Array.isArray(o.approvedItems)?o.approvedItems:[];
+      const seen=new Set();
+      for(const it of items){const key=norm(it?.clave||it?.cpm||it?.codigo||'');if(!key)continue;const qty=Math.max(0,num(it?.cantidadSolicitadaAhora??it?.cantidadSolicitudActual??it?.cantidadPorRecibir??it?.cantidadRecibidaSolicitada??it?.cantidad24Horas??it?.cantidadSolicitada??it?.pzs??it?.cantidad));const rec=score.get(key)||{qty:0,requests:0};rec.qty+=qty;if(!seen.has(key)){rec.requests+=1;seen.add(key)}score.set(key,rec)}
+    }
+    return score;
+  }
+  function mxInventoryTopRequested(rows,limit=20){const scores=mxInventoryDemandScores();return rows.slice().sort((a,b)=>{const A=scores.get(norm(a.clave))||{qty:0,requests:0},B=scores.get(norm(b.clave))||{qty:0,requests:0};return(B.qty-A.qty)||(B.requests-A.requests)||(num(b.existencia)-num(a.existencia))||String(a.descripcion||'').localeCompare(String(b.descripcion||''),'es')}).slice(0,limit)}
+  function renderInventory(){
+    const q=norm($('inventoryQ')?.value||''),available=inventoryItems.filter(r=>num(r.existencia)>0);
+    if(q){inventoryFiltered=available.filter(r=>norm(r.clave).includes(q)||norm(r.descripcion).includes(q));}
+    else{inventoryFiltered=mxInventoryTopRequested(available,20);}
+    const rows=inventoryFiltered;
+"""
+          rep(old,new)
+          rep("$('btnInventoryReload').onclick=()=>loadInventoryData(true);$('inventoryQ').addEventListener('input',renderInventory);","$('btnInventoryReload').onclick=()=>loadInventoryData(true);$('inventoryQ').addEventListener('input',renderInventory);window.addEventListener('mx-existencias-demand-updated',()=>{if(inventoryLoaded&&!norm($('inventoryQ')?.value||''))renderInventory()});")
+          p.write_text(s,encoding='utf-8')
+          # Validar todos los scripts inline del visor.
+          pat=re.compile(r'<script\b([^>]*)>(.*?)</script>',re.I|re.S);tp=re.compile(r"\btype\s*=\s*[\"']([^\"']+)",re.I)
+          checked=0
+          for i,(attrs,code) in enumerate(pat.findall(s)):
+              if re.search(r'\bsrc\s*=',attrs,re.I) or not code.strip(): continue
+              mt=tp.search(attrs)
+              if mt and mt.group(1).lower() not in ('text/javascript','application/javascript','module'): continue
+              fd,tmp=tempfile.mkstemp(suffix='.js');os.close(fd);Path(tmp).write_text(code,encoding='utf-8')
+              r=subprocess.run(['node','--check',tmp],capture_output=True,text=True);os.unlink(tmp)
+              if r.returncode: raise RuntimeError(f'script {i}: {r.stderr}')
+              checked+=1
+          print('Existencias OK; scripts verificados:',checked)
+          PY
+      - name: Commit
+        shell: bash
+        run: |
+          git config user.name 'Macroxel Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/macroxel-fix-existencias-binding-top20.yml
+          git add MACROXEL-VISORES-CENTRAL/EXISTENCIAS/index.html
+          git commit -m 'Corregir activación de Existencias y limitar vista a top 20'
+          git push
