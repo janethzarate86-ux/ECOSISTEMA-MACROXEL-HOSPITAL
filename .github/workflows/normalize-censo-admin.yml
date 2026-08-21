@@ -1,0 +1,223 @@
+name: Normalizar Censo y Administrador como visores autocontenidos
+
+on:
+  push:
+    paths:
+      - '.github/workflows/normalize-censo-admin.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preparar imagenes
+        run: python -m pip install --quiet pillow
+
+      - name: Integrar PWA, logo e inicio dentro de index.html
+        shell: bash
+        run: |
+          cat > /tmp/normalize_visores.py <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          import io, base64, re, json
+          
+          ROOT=Path(".")
+          CENTRAL=ROOT/"MACROXEL-VISORES-CENTRAL"
+          ADMIN=CENTRAL/"ADMINISTRADOR-ECOSISTEMA"
+          CENSO=CENTRAL/"CENSO-HOSPITALARIO"
+          
+          def data_assets():
+              logo=Image.open(CENSO/"logo_macroxel.png").convert("RGBA")
+              logo=logo.resize((512,512),Image.Resampling.LANCZOS)
+              logo=logo.quantize(colors=256,method=Image.Quantize.FASTOCTREE,dither=Image.Dither.FLOYDSTEINBERG)
+              b=io.BytesIO(); logo.save(b,format="PNG",optimize=True)
+              icon="data:image/png;base64,"+base64.b64encode(b.getvalue()).decode()
+          
+              splash=Image.open(CENSO/"inicio_macroxel.png").convert("RGBA")
+              w=720; h=round(splash.height*w/splash.width)
+              splash=splash.resize((w,h),Image.Resampling.LANCZOS)
+              bg=Image.new("RGB",splash.size,"#03142b")
+              bg.paste(splash,mask=splash.getchannel("A"))
+              b=io.BytesIO(); bg.save(b,format="JPEG",quality=82,optimize=True,progressive=True,subsampling=2)
+              start="data:image/jpeg;base64,"+base64.b64encode(b.getvalue()).decode()
+              return icon,start
+          
+          ICON,START=data_assets()
+          
+          def inline_head(name,short):
+              return f'''<!-- MACROXEL · recursos PWA integrados; mismo patrón de los demás visores: un solo index.html -->
+          <link id="mxEmbeddedAppIcon" rel="icon" type="image/png" sizes="512x512" href="{ICON}">
+          <link rel="apple-touch-icon" href="{ICON}">
+          <script id="mx-inline-pwa-assets-v1050">
+          window.MX_EMBEDDED_LOGO=document.getElementById('mxEmbeddedAppIcon').href;
+          window.MX_EMBEDDED_STARTUP={json.dumps(START)};
+          (function(){{
+            try{{
+              var icon=window.MX_EMBEDDED_LOGO;
+              var m={{name:{json.dumps(name)},short_name:{json.dumps(short)},display:'standalone',background_color:'#03142b',theme_color:'#03142b',
+                icons:[{{src:icon,sizes:'512x512',type:'image/png',purpose:'any'}},{{src:icon,sizes:'512x512',type:'image/png',purpose:'maskable'}}]}};
+              var b=new Blob([JSON.stringify(m)],{{type:'application/manifest+json'}});
+              var l=document.createElement('link');l.rel='manifest';l.href=URL.createObjectURL(b);document.head.appendChild(l);
+            }}catch(_e){{}}
+          }})();
+          </script>'''
+          
+          def remove_external_pwa(s):
+              s=re.sub(r'\s*<link rel="manifest"[^>]*?/?>\s*','\n',s)
+              s=re.sub(r'\s*<link rel="icon"[^>]*?/?>\s*','\n',s)
+              s=re.sub(r'\s*<link rel="apple-touch-icon"[^>]*?/?>\s*','\n',s)
+              return s
+          
+          def patch_admin():
+              p=ADMIN/"index.html"; s=p.read_text("utf-8")
+              assert "mx-inline-pwa-assets-v1050" not in s
+              s=remove_external_pwa(s)
+              title='<title>MACROXEL · Administrador del Ecosistema</title>'
+              assert title in s
+              s=s.replace(title,inline_head("Macroxel Administrador del Ecosistema","Administrador")+"\n"+title,1)
+              if 'name="apple-mobile-web-app-title"' not in s:
+                  needle='<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">'
+                  s=s.replace(needle,needle+'\n<meta name="apple-mobile-web-app-title" content="Administrador Macroxel">',1)
+          
+              old='#startup{position:fixed;inset:0;z-index:100000;background:#041225;transition:opacity .28s ease;overflow:hidden}#startup.hideSplash{opacity:0;pointer-events:none}#startup img{width:100vw;height:100dvh;object-fit:cover;display:block}'
+              new='#startup{position:fixed;inset:0;z-index:2147483647;background:#03142b;opacity:1;visibility:visible;transition:opacity .22s ease,visibility .22s ease;overflow:hidden;touch-action:none;overscroll-behavior:none}#startup.hideSplash{opacity:0;visibility:hidden;pointer-events:none}#startup img{position:absolute!important;inset:0!important;display:block!important;width:100vw!important;height:100vh!important;height:100dvh!important;min-width:100vw!important;min-height:100vh!important;min-height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;object-fit:cover!important;object-position:center center!important;pointer-events:none;user-select:none;-webkit-user-drag:none}'
+              assert old in s
+              s=s.replace(old,new,1)
+              assert '<div id="startup"><img src="inicio.png" alt="MACROXEL"></div>' in s
+              s=s.replace('<div id="startup"><img src="inicio.png" alt="MACROXEL"></div>',
+                          '<div id="startup"><img id="mxStartupArt" alt="MACROXEL" draggable="false"></div>\n<script>document.getElementById("mxStartupArt").src=window.MX_EMBEDDED_STARTUP;</script>',1)
+              assert s.count('src="logo.png"')==2
+              s=s.replace('src="logo.png"','data-mx-logo')
+              apply='<script id="mx-apply-inline-logo-v1050">(function(){for(const e of document.querySelectorAll("[data-mx-logo]"))e.src=window.MX_EMBEDDED_LOGO})();</script>'
+              assert '</body>' in s
+              s=s.replace('</body>',apply+'\n</body>',1)
+              p.write_text(s,"utf-8")
+          
+          def patch_censo():
+              p=CENSO/"index.html"; s=p.read_text("utf-8")
+              assert "mx-inline-pwa-assets-v1050" not in s
+              s=remove_external_pwa(s)
+              m=re.search(r'<title>.*?</title>',s,re.S); assert m
+              s=s[:m.start()]+inline_head("Macroxel Censo Hospitalario","Censo")+"\n"+s[m.start():]
+              old='#mxStartupSplash{display:block!important;position:fixed;inset:0;z-index:100000;background:#041225;overflow:hidden;transition:opacity .28s ease}#mxStartupSplash.hide{opacity:0;pointer-events:none}#mxStartupSplash .mx-startup-art{display:block;width:100vw;height:100dvh;object-fit:cover}'
+              new='#mxStartupSplash{display:block!important;position:fixed;inset:0;z-index:2147483647;background:#03142b;overflow:hidden;opacity:1;visibility:visible;transition:opacity .22s ease,visibility .22s ease;touch-action:none;overscroll-behavior:none}#mxStartupSplash.hide{opacity:0;visibility:hidden;pointer-events:none}#mxStartupSplash .mx-startup-art{position:absolute!important;inset:0!important;display:block!important;width:100vw!important;height:100vh!important;height:100dvh!important;min-width:100vw!important;min-height:100vh!important;min-height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:0!important;object-fit:cover!important;object-position:center center!important;pointer-events:none;user-select:none;-webkit-user-drag:none}'
+              assert old in s
+              s=s.replace(old,new,1)
+              assert 'src="inicio_macroxel.png"' in s
+              s=s.replace('src="inicio_macroxel.png"','id="mxCensoStartupArt"',1)
+              s=re.sub(r'(<img class="gate-logo")\s+src="data:image/[^"]+"',r'\1 data-mx-logo',s,count=1)
+              assert 'src="logo_macroxel.png"' in s
+              s=s.replace('src="logo_macroxel.png"','data-mx-logo',1)
+              startup='<script id="mx-censo-startup-art-v1050">document.getElementById("mxCensoStartupArt").src=window.MX_EMBEDDED_STARTUP;</script>'
+              splash_close='</div>\n<div id="activationGate"'
+              assert splash_close in s
+              s=s.replace(splash_close,'</div>\n'+startup+'\n<div id="activationGate"',1)
+              apply='<script id="mx-apply-inline-logo-v1050">(function(){for(const e of document.querySelectorAll("[data-mx-logo]"))e.src=window.MX_EMBEDDED_LOGO})();</script>'
+              assert '</body>' in s
+              s=s.replace('</body>',apply+'\n</body>',1)
+              p.write_text(s,"utf-8")
+          
+          patch_admin(); patch_censo()
+          
+          for folder,names in [
+              (ADMIN,["apple-touch-icon.png","icon-192.png","icon-512.png","manifest.webmanifest","inicio.png","logo.png"]),
+              (CENSO,["apple-touch-icon.png","icon-192.png","icon-512.png","manifest.webmanifest","inicio_macroxel.png","logo_macroxel.png"]),
+          ]:
+              for n in names:
+                  q=folder/n
+                  if q.exists(): q.unlink()
+          PY
+          python /tmp/normalize_visores.py
+
+      - name: Revision 1 de 5 - estructura limpia
+        shell: bash
+        run: |
+          set -e
+          for d in MACROXEL-VISORES-CENTRAL/ADMINISTRADOR-ECOSISTEMA MACROXEL-VISORES-CENTRAL/CENSO-HOSPITALARIO; do
+            count=$(find "$d" -maxdepth 1 -type f | wc -l)
+            test "$count" -eq 1
+            test -f "$d/index.html"
+          done
+
+      - name: Revision 2 de 5 - sin referencias externas obsoletas
+        shell: bash
+        run: |
+          set -e
+          ! grep -REn 'manifest\.webmanifest|icon-192\.png|icon-512\.png|apple-touch-icon\.png|logo_macroxel\.png|inicio_macroxel\.png|src="logo\.png"|src="inicio\.png"'             MACROXEL-VISORES-CENTRAL/ADMINISTRADOR-ECOSISTEMA/index.html             MACROXEL-VISORES-CENTRAL/CENSO-HOSPITALARIO/index.html
+
+      - name: Revision 3 de 5 - PWA e iconos integrados
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for p in [
+            Path("MACROXEL-VISORES-CENTRAL/ADMINISTRADOR-ECOSISTEMA/index.html"),
+            Path("MACROXEL-VISORES-CENTRAL/CENSO-HOSPITALARIO/index.html")
+          ]:
+              s=p.read_text("utf-8")
+              assert s.count("mx-inline-pwa-assets-v1050")==1
+              assert 'rel="apple-touch-icon"' in s
+              assert 'data:image/png;base64,' in s
+              assert 'data:image/jpeg;base64,' in s
+              assert "new Blob([JSON.stringify(m)]" in s
+              assert "purpose:'maskable'" in s
+          PY
+
+      - name: Revision 4 de 5 - inicio realmente a pantalla completa
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          a=Path("MACROXEL-VISORES-CENTRAL/ADMINISTRADOR-ECOSISTEMA/index.html").read_text("utf-8")
+          c=Path("MACROXEL-VISORES-CENTRAL/CENSO-HOSPITALARIO/index.html").read_text("utf-8")
+          for s in (a,c):
+              assert "width:100vw!important" in s
+              assert "height:100dvh!important" in s
+              assert "object-fit:cover!important" in s
+              assert "object-position:center center!important" in s
+              assert "MX_EMBEDDED_STARTUP" in s
+              assert "MX_EMBEDDED_LOGO" in s
+          assert 'id="mxStartupArt"' in a
+          assert 'id="mxCensoStartupArt"' in c
+          PY
+
+      - name: Revision 5 de 5 - sintaxis y funciones operativas conservadas
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re, subprocess, tempfile
+          targets={
+            "MACROXEL-VISORES-CENTRAL/ADMINISTRADOR-ECOSISTEMA/index.html":
+              ["loadActivations","loadOrders","loadInventory","loadPresence","sendMsg","validateLicense"],
+            "MACROXEL-VISORES-CENTRAL/CENSO-HOSPITALARIO/index.html":
+              ["validateLicense","renderFiles","renderPatients","deliver","refreshRemote","bindEcosystem"]
+          }
+          for name,sentinels in targets.items():
+              text=Path(name).read_text("utf-8")
+              for x in sentinels: assert x in text, (name,x)
+              scripts=re.findall(r'<script(?:\s[^>]*)?>(.*?)</script>',text,re.S|re.I)
+              for i,js in enumerate(scripts):
+                  with tempfile.NamedTemporaryFile("w",suffix=".js",encoding="utf-8",delete=False) as f:
+                      f.write(js); fn=f.name
+                  r=subprocess.run(["node","--check",fn],capture_output=True,text=True)
+                  assert r.returncode==0, f"{name} script {i}: {r.stderr}"
+          PY
+
+      - name: Publicar limpieza
+        shell: bash
+        run: |
+          set -e
+          rm -f .github/workflows/normalize-censo-admin.yml
+          git config user.name "Macroxel Ecosystem"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Normalizar Censo y Administrador: PWA e imagenes integradas"
+          git push
