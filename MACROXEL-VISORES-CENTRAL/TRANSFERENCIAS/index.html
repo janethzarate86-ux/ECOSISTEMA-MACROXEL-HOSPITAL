@@ -3239,7 +3239,7 @@ async function connectionState(){
  else if(lastConnectedAt&&now-lastConnectedAt<CONNECTION_GRACE_MS)connected=true;
  return{connected,principalOnline,firebase:!!firebase,paused:false,systemId:sid,lastSeenAt:pres?.lastSeenAt||'',heartbeatAvailable:!!last,reason:connected?(principalOnline?'Conectado':'Conectado a Firebase'):'La Firebase activa del Sistema Principal no responde'}
 }
-function boot(){if(bootPromise)return bootPromise;bootPromise=(async()=>{await ensureSystemId();return await resolve(true)})().catch(()=>null);return bootPromise}
+function boot(){if(bootPromise)return bootPromise;bootPromise=resolve(true).catch(()=>null);return bootPromise}
 window.mxFixedPrincipalBinding={version:'6.0.0',mode:'STRICT_LIVE_ROUTE_SYSTEM_ID',appCode:APP,get systemId(){return systemId},get routeHash(){return routeHash},get baseHash(){return baseHash},read:readBinding,boot,resolve,resolveForActivation,connectionState};
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{boot().catch(()=>{})},{once:true});else boot().catch(()=>{});window.addEventListener('online',()=>setTimeout(()=>{bootPromise=null;boot().catch(()=>{})},120));
 })();
