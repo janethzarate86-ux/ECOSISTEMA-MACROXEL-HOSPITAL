@@ -1,0 +1,10 @@
+MACROXEL HPS - VISOR QUIRÓFANO / STOCK ANTIBIÓTICOS
+
+Carpeta central lista para GitHub.
+El usuario de Quirófano registra consumo por paciente, consulta su stock y solicita faltantes.
+Farmacia recibe la solicitud en Pedidos y la surte utilizando la operación existente de Salidas internas/Kits.
+No se permiten ajustes manuales de inventario desde el visor.
+
+Repositorio sugerido cuando lo crees: Macroxel-HPS-Quirofano-Stock
+
+La carpeta CONTROL-STOCK-ANTIBIOTICOS se mantiene como alias compatible para no romper enlaces previos.
