@@ -1243,7 +1243,7 @@ function parse(v){try{return JSON.parse(v||'null')}catch(_e){return null}}
 function coarseDevice(){const ua=navigator.userAgent||'';if(/iphone|ipad|ipod/i.test(ua))return'iOS';if(/android/i.test(ua))return'Android';if(/windows/i.test(ua))return'Windows';if(/macintosh|mac os/i.test(ua))return'macOS';return'Web'}
 function deviceId(){try{const v=window.mxDeviceIdentityV2?.deviceId?.();if(v)return String(v||'').trim()}catch(_e){}const vals=[];try{vals.push(localStorage.getItem('mx_macroxel_unified_device_id_v2'),localStorage.getItem('mx_macroxel_unified_device_id_v1'))}catch(_e){}for(const id of ['mxVaDevice','deviceIdBox','deviceBox','activationDevice','viewerDevice']){const e=document.getElementById(id);if(e)vals.push(e.value||e.textContent)}return vals.map(v=>String(v||'').trim()).find(v=>v.length>=8&&!/^\[object Object\]$/i.test(v))||''}
 async function hash(v){const raw=String(v||'');if(!raw)return'';try{if(crypto?.subtle){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw));return Array.from(new Uint8Array(b)).slice(0,16).map(x=>x.toString(16).padStart(2,'0')).join('')}}catch(_e){}let h=2166136261;for(let i=0;i<raw.length;i++){h^=raw.charCodeAt(i);h=Math.imul(h,16777619)}return'v'+(h>>>0).toString(16).padStart(8,'0')}
-function branch(){try{const c=window.mxViewerGetCfg?.()||{};return String(c.branch||c.unitId||'HGAM').trim().toUpperCase()||'HGAM'}catch(_e){return'HGAM'}}
+function branch(){try{const c=window.mxViewerGetCfg?.()||{};return String(c.branch||c.unitId||'').trim().toUpperCase()}catch(_e){return''}}
 function currentDb(){try{const c=window.mxViewerGetCfg?.()||{};return clean(c.db||c.firebaseUrl||c.currentUrl||c.url)}catch(_e){return''}}
 let approvedDbHost='',approvedSystemId='';
 window.mxApproveOperationalDb=(db,id='')=>{try{const u=new URL(clean(db));if(!/^(?:https:)$/.test(u.protocol))return false;approvedDbHost=u.hostname.toLowerCase();approvedSystemId=String(id||'').trim().toUpperCase();return true}catch(_e){approvedDbHost='';approvedSystemId='';return false}};
@@ -2105,15 +2105,7 @@ function viewerCfg(){try{return window.mxViewerGetCfg?.()||{}}catch(_e){return{}
 function applyViewer(id,db='',unitName=''){const sid=validId(id),url=cleanDb(db);if(!sid)return false;try{const previous=viewerCfg(),sameId=validId(previous.branch||previous.unitId)===sid,sameDb=cleanDb(previous.db||previous.firebaseUrl)===url,sameName=!unitName||txt(previous.unitName||'')===txt(unitName);if(sameId&&sameDb&&sameName)return false;window.mxViewerSaveCfg?.({db:url,branch:sid,unitName:unitName||txt(previous.unitName||'')},false);return true}catch(_e){return false}}
 let systemId='',routeHash='',baseHash='',bootPromise=null,lastFirebaseOkAt=0,lastConnectedAt=0,lastPrincipalPresence=null,lastStateDb='',lastStateSystem='';
 async function routeAssociation(){const sig=routeSignature();if(!sig)return null;routeHash=await sha256(sig);const r=await get(CONTROL_DB,'/ecosystem_connection/route_bindings/'+encodeURIComponent(routeHash),6500);if(!r||typeof r!=='object'||txt(r.appCode).toUpperCase()!==APP)return null;const id=validId(r.systemId||r.unitId||r.branch);return id?{systemId:id,source:'RUTA_GITHUB_EXACTA'}:null}
-async function baseAssociation(){const sig=githubBaseSignature();if(!sig)return null;baseHash=await sha256(sig);const r=await get(CONTROL_DB,'/ecosystem_connection/github_bases/'+encodeURIComponent(baseHash),6500);if(!r||typeof r!=='object')return null;const registered=githubBaseSignature(r.githubBase||r.baseUrl||'');if(registered&&registered!==sig)return null;const id=validId(r.systemId||r.unitId||r.branch);return id?{systemId:id,source:'BASE_GITHUB_DEL_SISTEMA'}:null}
-async function clearUntrustedBinding(source='RUTA_NO_ASOCIADA'){
-  try{window.mxClearOperationalDbApproval?.()}catch(_e){}
-  const previous=viewerCfg();
-  try{window.mxViewerSaveCfg?.({db:'',branch:txt(previous.branch||previous.unitId||''),unitName:txt(previous.unitName||'')},false)}catch(_e){}
-  try{localStorage.removeItem(KEY)}catch(_e){}
-  systemId='';routeHash='';baseHash='';
-  return{schemaVersion:6,mode:'STRICT_LIVE_ROUTE_SYSTEM_ID',appCode:APP,systemId:'',branch:'',db:'',firebaseUrl:'',source,updatedAt:new Date().toISOString()};
-}
+async function baseAssociation(){return null}
 async function ensureSystemId(){
  const previousSystemId=systemId;
  const q=queryId();
