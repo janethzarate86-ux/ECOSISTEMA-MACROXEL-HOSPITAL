@@ -1,9 +1,0 @@
-MACROXEL HPS - CONTROL STOCK ANTIBIOTICOS
-
-Este visor usa el Kit configurado en el Sistema Principal como stock objetivo.
-Flujo: consumo del servicio -> faltante -> service_orders (Pedidos) -> surtido del Sistema Principal -> salidas/lotes -> stock actualizado.
-
-Primera configuración: ID del Sistema, Servicio, Iniciales, Kit y responsable. La URL de Firebase NO se captura: se resuelve por ecosystem_connection del Sistema Principal.
-
-Repositorio sugerido: Control-Stock-Antibioticos
-Entrada central: MACROXEL-VISORES-CENTRAL/CONTROL-STOCK-ANTIBIOTICOS/index.html
