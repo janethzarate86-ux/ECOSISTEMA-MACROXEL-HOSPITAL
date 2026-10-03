@@ -1877,9 +1877,9 @@ body.logged .panel{margin:12px 14px!important;border-radius:15px!important;borde
 </style>
 <script id="mx-hospital-mirror-preboot-v226">
 (function(){'use strict';
-  const LICENSE_HOST='licenciasmacroxel-default-rtdb.firebaseio.com',CONTROL_HOST='ecosistema-macroxel-default-rtdb.firebaseio.com';
+  const LICENSE_HOST='licenciasmacroxel-default-rtdb.firebaseio.com';
   const clean=v=>String(v||'').trim().replace(/\.json\/?$/i,'').replace(/\/+$/,'');
-  const validDb=v=>{try{const u=new URL(clean(v)),h=u.hostname.toLowerCase();return u.protocol==='https:'&&/(?:firebaseio\.com|firebasedatabase\.app)$/i.test(h)&&h!==LICENSE_HOST&&h!==CONTROL_HOST?clean(v):''}catch(_e){return''}};
+  const validDb=v=>{try{const u=new URL(clean(v)),h=u.hostname.toLowerCase();return u.protocol==='https:'&&/(?:firebaseio\.com|firebasedatabase\.app)$/i.test(h)&&h!==LICENSE_HOST?clean(v):''}catch(_e){return''}};
   const validSystem=v=>String(v||'').trim().toUpperCase().replace(/[.#$\[\]\/]/g,'_');
   const routeKey='mx_hospital_mirror_route_v226::'+location.origin+location.pathname.replace(/\/index\.html?$/i,'/');
   let qDb='',qSystem='',unit='';
@@ -1899,7 +1899,7 @@ body.logged .panel{margin:12px 14px!important;border-radius:15px!important;borde
   const nativeFetch=window.__mxMirrorNativeFetch;
   window.fetch=async function(input,init){
     const cfg=init||{},method=String(cfg.method||'GET').toUpperCase(),url=typeof input==='string'?input:String(input&&input.url||'');
-    if(method!=='GET'&&method!=='HEAD'){try{const u=new URL(url,location.href),h=u.hostname.toLowerCase();if(/(?:firebaseio\.com|firebasedatabase\.app)$/i.test(h)&&h!==LICENSE_HOST&&h!==CONTROL_HOST)return new Response('true',{status:200,headers:{'Content-Type':'application/json'}})}catch(_e){}}
+    if(method!=='GET'&&method!=='HEAD'){try{const u=new URL(url,location.href),h=u.hostname.toLowerCase();if(/(?:firebaseio\.com|firebasedatabase\.app)$/i.test(h)&&h!==LICENSE_HOST)return new Response('true',{status:200,headers:{'Content-Type':'application/json'}})}catch(_e){}}
     return nativeFetch(input,init);
   };
   window.mxHospitalMirrorConnection=async()=>{if(!db||!systemId)throw new Error('Abre el Espejo hospitalario desde el Sistema Principal para recibir Firebase e ID del sistema.');return{dbUrl:db,systemId,unitName}};
