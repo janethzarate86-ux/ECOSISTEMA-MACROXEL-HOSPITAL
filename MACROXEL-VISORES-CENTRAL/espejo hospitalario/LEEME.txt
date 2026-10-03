@@ -1,0 +1,29 @@
+MACROXEL HPS · ESPEJO HOSPITALARIO · BASE v1
+
+Objetivo:
+- Mostrar en modo SOLO LECTURA los registros publicados por el Sistema Principal.
+- Mantener el mismo lenguaje visual del Sistema Principal.
+- No realizar ventas, entradas, salidas, surtidos ni ediciones desde el espejo.
+- No usar ni modificar la URL de licencias.
+
+Ruta Firebase de publicación:
+/hospital_mirror/{ID_SISTEMA}/
+
+Módulos iniciales:
+Inventario, Entradas, Salidas, Antimicrobianos, Kardex/Movimientos, Pedidos,
+Conteo, Médicos, Catálogo y Transferencias.
+
+Conexión dinámica:
+?mxSystem=ID_DEL_SISTEMA&mxDb=URL_FIREBASE_OPERATIVA
+
+El espejo acepta solamente Firebase operativa; la URL de licencias permanece separada.
+
+Esta carpeta central servirá como fuente para los repositorios espejo que se creen
+después en las distintas cuentas GitHub.
+
+Activación por dispositivo:
+- Solicita Nombre completo, Número de teléfono y Correo electrónico.
+- Registra la solicitud en /viewer_licenses/{ID_SISTEMA}/{DISPOSITIVO}.
+- Aplicación: HOSPITAL_MIRROR / Espejo hospitalario.
+- La autorización se realiza desde Control Central, igual que los demás visores.
+- Mientras no esté autorizado, el espejo permanece bloqueado y no carga los registros.
