@@ -1,4 +1,4 @@
-MACROXEL HPS · ESPEJO HOSPITALARIO v226
+MACROXEL HPS · ESPEJO HOSPITALARIO v227
 
 Esta carpeta usa la misma interfaz base del Sistema Principal y funciona únicamente como visor de consulta.
 
@@ -23,3 +23,10 @@ ACTIVACIÓN
 APERTURA
 El Sistema Principal o el repositorio de entrada debe abrir esta carpeta con:
 ?mxSystem=ID_DEL_SISTEMA&mxDb=URL_FIREBASE_OPERATIVA
+
+
+PORTABILIDAD v227:
+- El visor NO consulta una Firebase global de enrutamiento.
+- La primera conexión llega directamente desde el Sistema Principal mediante mxSystem + mxDb.
+- Después guarda esa pareja solo para la ruta actual del navegador, para poder reabrir el mismo visor.
+- Si cambia el cliente, la cuenta GitHub o la Firebase, se debe abrir el visor desde el nuevo Sistema Principal y se reemplaza la conexión de esa ruta.
